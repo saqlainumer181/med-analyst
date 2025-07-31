@@ -1,0 +1,50 @@
+# Core Dependencies
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Database
+supabase
+asyncpg
+sqlalchemy
+alembic
+
+
+# Authentication & Security
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+pydantic[email]
+
+# LLM & AI
+langchain
+langchain-openai
+openai
+
+# Caching & Storage
+redis
+chromadb
+
+# Utilities
+python-dotenv
+httpx
+rich
+
+# WebSocket
+websockets
+
+# PDF Generation
+reportlab
+matplotlib
+plotly
+
+# Testing
+pytest
+pytest-asyncio
+
+
+# Development
+black
+flake8
+mypy
