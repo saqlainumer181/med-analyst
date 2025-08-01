@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 router = APIRouter()
 
 
-@router.get("/health")
+@router.get("/health", include_in_schema=False)
 async def health_check():
     """Basic health check"""
     return {
@@ -18,7 +18,11 @@ async def health_check():
     }
 
 
-@router.get("/health/detailed", dependencies=[Depends(rate_limit_dependency)])
+@router.get(
+    "/health/detailed",
+    dependencies=[Depends(rate_limit_dependency)],
+    include_in_schema=False,
+)
 async def detailed_health_check() -> Dict[str, Any]:
     """Detailed health check including database and Redis connectivity"""
     health_status = {"status": "healthy", "timestamp": time.time(), "services": {}}
@@ -53,7 +57,7 @@ async def detailed_health_check() -> Dict[str, Any]:
     return health_status
 
 
-@router.get("/health/readiness")
+@router.get("/health/readiness", include_in_schema=False)
 async def readiness_check():
     """Kubernetes readiness probe"""
     try:
@@ -66,7 +70,7 @@ async def readiness_check():
         return {"status": "not ready"}, 503
 
 
-@router.get("/health/liveness")
+@router.get("/health/liveness", include_in_schema=False)
 async def liveness_check():
     """Kubernetes liveness probe"""
     return {"status": "alive"}

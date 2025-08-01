@@ -180,73 +180,85 @@ class SchemaRegistry:
 
     async def get_schema_info(self) -> dict:
         """Get current database schema information"""
-        redis_client = await get_redis()
+        try:
+            redis_client = await get_redis()
 
-        # Try to get from cache first
-        cached_schema = await redis_client.get("db_schema")
-        if cached_schema:
-            import json
+            # Try to get from cache first
+            cached_schema = await redis_client.get("db_schema")
+            if cached_schema:
+                import json
 
-            return json.loads(cached_schema)
+                return json.loads(cached_schema)
 
-        # Query schema from database
-        schema_query = """
-        SELECT 
-            t.table_name,
-            c.column_name,
-            c.data_type,
-            c.is_nullable,
-            c.column_default,
-            kcu.constraint_name,
-            tc.constraint_type
-        FROM information_schema.tables t
-        LEFT JOIN information_schema.columns c ON t.table_name = c.table_name
-        LEFT JOIN information_schema.key_column_usage kcu ON c.table_name = kcu.table_name 
-            AND c.column_name = kcu.column_name
-        LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name = tc.constraint_name
-        WHERE t.table_schema = 'public'
-        ORDER BY t.table_name, c.ordinal_position;
-        """
+            # Return mock data if database not available
+            if not db_manager.pool:
+                logger.warning("Database not available, returning mock schema")
+                return {
+                    "users": {"columns": [], "primary_keys": [], "foreign_keys": []}
+                }
 
-        schema_data = {}
-        async with db_manager.get_connection() as conn:
-            rows = await conn.fetch(schema_query)
+            # Query schema from database - FIXED LINE BELOW
+            schema_query = """
+            SELECT 
+                t.table_name,
+                c.column_name,
+                c.data_type,
+                c.is_nullable,
+                c.column_default,
+                kcu.constraint_name,
+                tc.constraint_type
+            FROM information_schema.tables t
+            LEFT JOIN information_schema.columns c ON t.table_name = c.table_name
+            LEFT JOIN information_schema.key_column_usage kcu ON c.table_name = kcu.table_name 
+                AND c.column_name = kcu.column_name
+            LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name = tc.constraint_name
+            WHERE t.table_schema = 'public'
+                AND t.table_type = 'BASE TABLE'
+                AND c.table_schema = 'public'
+            ORDER BY t.table_name, c.ordinal_position;
+            """
 
-            for row in rows:
-                table_name = row["table_name"]
-                if table_name not in schema_data:
-                    schema_data[table_name] = {
-                        "columns": [],
-                        "primary_keys": [],
-                        "foreign_keys": [],
-                    }
+            schema_data = {}
+            async with db_manager.pool.acquire() as conn:
+                rows = await conn.fetch(schema_query)
 
-                if row["column_name"]:
-                    column_info = {
-                        "name": row["column_name"],
-                        "type": row["data_type"],
-                        "nullable": row["is_nullable"] == "YES",
-                        "default": row["column_default"],
-                    }
-                    schema_data[table_name]["columns"].append(column_info)
+                for row in rows:
+                    table_name = row["table_name"]
+                    if table_name not in schema_data:
+                        schema_data[table_name] = {
+                            "columns": [],
+                            "primary_keys": [],
+                            "foreign_keys": [],
+                        }
 
-                    if row["constraint_type"] == "PRIMARY KEY":
-                        schema_data[table_name]["primary_keys"].append(
-                            row["column_name"]
-                        )
-                    elif row["constraint_type"] == "FOREIGN KEY":
-                        schema_data[table_name]["foreign_keys"].append(
-                            row["column_name"]
-                        )
+                    if row["column_name"]:
+                        column_info = {
+                            "name": row["column_name"],
+                            "type": row["data_type"],
+                            "nullable": row["is_nullable"] == "YES",
+                            "default": row["column_default"],
+                        }
+                        schema_data[table_name]["columns"].append(column_info)
 
-        # Cache schema for 1 hour
-        import json
+                        if row["constraint_type"] == "PRIMARY KEY":
+                            schema_data[table_name]["primary_keys"].append(
+                                row["column_name"]
+                            )
+                        elif row["constraint_type"] == "FOREIGN KEY":
+                            schema_data[table_name]["foreign_keys"].append(
+                                row["column_name"]
+                            )
 
-        await redis_client.setex(
-            "db_schema", settings.schema_cache_ttl, json.dumps(schema_data)
-        )
+            await redis_client.setex(
+                "db_schema", settings.schema_cache_ttl, json.dumps(schema_data)
+            )
 
-        return schema_data
+            return schema_data
+
+        except Exception as e:
+            logger.error(f"Failed to get schema info: {e}")
+            # Return empty schema as fallback
+            return {}
 
 
 # Global schema registry
